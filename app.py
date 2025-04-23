@@ -30,7 +30,7 @@ def load_whisper_model():
     try:
         # Using the 'base' model. Can be changed to 'tiny', 'small', 'medium', 'large'.
         # 'base' is a good balance for general use.
-        model_name = "base"
+        model_name = "medium" # Change to 'tiny', 'small', 'medium', or 'large' as needed
         # Use st.spinner to show a loading indicator while the model is loading.
         with st.spinner(f"Loading Whisper model '{model_name}'..."):
              model = whisper.load_model(model_name)
