@@ -1,3 +1,7 @@
 audio_chunks/
 transcript_log.md
 .venv/
+*.DS_Store*
+.vscode
+.ipynb_checkpoints
+__pycache__

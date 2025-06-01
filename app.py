@@ -8,12 +8,13 @@ from datetime import datetime
 import whisper
 import glob # To find files in the directory
 import sys # Import sys to check if running in Streamlit
+# Remove asyncio import as we won't use it
 
 # --- Streamlit Page Configuration (MUST be the first Streamlit command) ---
 # Check if running in Streamlit before calling set_page_config
 # This prevents errors if the script is run directly for testing functions
 if 'streamlit' in sys.modules:
-    st.set_page_config(layout="wide", page_title="Whisper Transcription")
+    st.set_page_config(layout="wide", page_title="Transcription App", page_icon=":material/speech_to_text:")
 
 # --- Configuration ---
 # Directory where the recorder script saves audio chunks.
@@ -24,24 +25,24 @@ OUTPUT_FILENAME = "transcript_log.md" # File to save the transcript log
 
 # --- Load Whisper Model ---
 # Use st.cache_resource to load the model only once across Streamlit re-runs.
-@st.cache_resource
+@st.cache_resource(show_spinner=False)
 def load_whisper_model():
     """Loads the Whisper model, cached to avoid reloading on re-runs."""
     try:
-        # Using the 'base' model. Can be changed to 'tiny', 'small', 'medium', 'large'.
-        # 'base' is a good balance for general use.
-        model_name = "medium" # Change to 'tiny', 'small', 'medium', or 'large' as needed
-        # Use st.spinner to show a loading indicator while the model is loading.
+        model_name = "medium"
         with st.spinner(f"Loading Whisper model '{model_name}'..."):
-             model = whisper.load_model(model_name)
-        st.success(f"Whisper model '{model_name}' loaded successfully.")
-        return model
+            model = whisper.load_model(model_name)
+            return model
     except Exception as e:
         st.error(f"Error loading Whisper model: {e}")
         return None
 
-# Load the model when the script first runs
-model = load_whisper_model()
+# Initialize model in session state if not already present
+if 'whisper_model' not in st.session_state:
+    st.session_state.whisper_model = load_whisper_model()
+
+# Use the model from session state
+model = st.session_state.whisper_model
 
 # --- Session State Initialization ---
 # Initialize necessary session state variables.
@@ -79,36 +80,11 @@ def transcribe_wav_file(wav_path):
 
     try:
         print(f"Transcribing WAV: {wav_path}") # Debugging
-        # Load the audio file using scipy.io.wavfile.read
-        # read returns sample rate and data
-        sample_rate, audio_data = read(wav_path)
-
-        # Ensure audio data is in the correct format (int16) and mono if necessary
-        if audio_data.dtype != np.int16:
-             # Convert to int16 if it's not already
-             audio_data = (audio_data * (2**15 - 1)).astype(np.int16)
-
-        if audio_data.ndim > 1:
-             # Convert to mono by taking the first channel
-             audio_data = audio_data[:, 0]
-
-        # Whisper expects a specific format (float32, 16kHz).
-        # We need to resample if the input is not 16kHz.
-        # For simplicity in this example, we assume 16kHz input from recorder.py.
-        # If your recorder saves at a different rate, you'd need resampling here (e.g., using librosa or torchaudio).
-        if sample_rate != 16000:
-             print(f"Warning: Input sample rate {sample_rate} != 16000. Transcription quality may be affected.")
-             # Add resampling logic here if needed
-
-        # Whisper's transcribe method expects a numpy array of type float32
-        # and a sample rate of 16000. The base model works with 16kHz.
-        # Convert int16 audio data to float32 and normalize
-        audio_data_float32 = audio_data.astype(np.float32) / (2**15)
 
 
         # Perform the transcription using the Whisper model.
         # The transcribe method returns a dictionary, we extract the 'text' key.
-        transcript = model.transcribe(audio_data_float32)["text"].strip()
+        transcript = model.transcribe(wav_path)["text"].strip()
         print(f"Transcription complete: {transcript[:50]}...") # Debugging (print first 50 chars)
         return transcript, None # Return the transcribed text and no error
     except Exception as e:
@@ -144,7 +120,7 @@ def append_to_markdown(text, filename):
 
 # --- UI Components ---
 # Display the main title of the application
-st.title("🎙️ Continuous Transcription Monitor")
+st.title(":material/speech_to_text: Transcription Monitor")
 # Add a brief description
 st.markdown(f"Monitoring `{AUDIO_CHUNKS_DIR}` for new audio files...")
 
@@ -152,7 +128,7 @@ st.markdown(f"Monitoring `{AUDIO_CHUNKS_DIR}` for new audio files...")
 col1, col2 = st.columns(2)
 with col1:
     # Start button. Disabled if the app is already processing.
-    if st.button("▶️ Start Monitoring", type="primary", disabled=st.session_state.is_processing):
+    if st.button(":material/play_circle: Start Monitoring", type="primary", disabled=st.session_state.is_processing, use_container_width=True):
         st.session_state.is_processing = True # Set the state to processing
         st.session_state.status_message = f"Monitoring `{AUDIO_CHUNKS_DIR}`..."
         st.session_state.processed_files_count = 0
@@ -161,17 +137,16 @@ with col1:
 
 with col2:
     # Stop button. Disabled if the app is not processing.
-    if st.button("⏹️ Stop Monitoring", type="secondary", disabled=not st.session_state.is_processing):
+    if st.button(":material/stop_circle: Stop Monitoring", type="secondary", disabled=not st.session_state.is_processing, use_container_width=True):
         st.session_state.is_processing = False # Set the state to stopping
         st.session_state.status_message = "Stopping monitoring..."
         st.rerun() # Force a Streamlit re-run to exit the processing loop
 
 # Placeholders for dynamic UI elements
 status_placeholder = st.empty() # Placeholder for status messages
-# Progress bar could show files processed vs total found in a batch, or just general activity
 progress_bar_placeholder = st.empty()
-latest_transcript_expander = st.expander("Latest Transcript", expanded=True)
-full_log_expander = st.expander("Full Log", expanded=False)
+full_log_expander = st.container(border=False)  # Changed to expanded=True since it's now the only log
+full_log_expander.write("### Transcription Log")
 file_counts_placeholder = st.empty() # Placeholder to show file counts
 
 # --- Main Application Logic ---
@@ -220,14 +195,12 @@ def main_loop():
                 if transcript:
                     entry = f"**{timestamp}:** {transcript}"
                     st.session_state.transcript_log.insert(0, entry) # Add to log
-                    latest_transcript_expander.markdown(entry) # Update latest display
                     append_to_markdown(transcript, OUTPUT_FILENAME) # Append to file
                     st.session_state.processed_files_count += 1
                     print(f"Successfully processed {file_name}") # Debugging
                 else:
                     entry = f"**{timestamp}:** ERROR transcribing {file_name} - {error}"
                     st.session_state.transcript_log.insert(0, entry) # Add error to log
-                    latest_transcript_expander.markdown(entry) # Update latest display
                     append_to_markdown(f"ERROR: {error} (File: {file_name})", OUTPUT_FILENAME) # Append error to file
                     st.session_state.error_count += 1
                     print(f"Error processing {file_name}: {error}") # Debugging

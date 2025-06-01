@@ -6,12 +6,14 @@ readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
     "dotenv>=0.9.9",
+    "huggingface-hub>=0.32.3",
     "ipykernel>=6.29.5",
     "langdetect>=1.0.9",
     "matplotlib>=3.10.1",
     "numpy>=2.2.5",
     "openai>=1.75.0",
     "openai-whisper>=20240930",
+    "pyannote-audio>=3.3.2",
     "pyaudio>=0.2.14",
     "pycld2>=0.42",
     "scipy>=1.15.2",
