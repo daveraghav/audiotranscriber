@@ -8,6 +8,7 @@ dependencies = [
     "dotenv>=0.9.9",
     "huggingface-hub>=0.32.3",
     "ipykernel>=6.29.5",
+    "langchain-together>=0.3.0",
     "langdetect>=1.0.9",
     "matplotlib>=3.10.1",
     "numpy>=2.2.5",
@@ -20,4 +21,8 @@ dependencies = [
     "sounddevice>=0.5.1",
     "speechrecognition>=3.14.2",
     "streamlit>=1.44.1",
+    "together>=1.5.8",
 ]
+
+[tool.uv]
+link-mode = "copy"

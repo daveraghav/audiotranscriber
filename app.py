@@ -1,6 +1,7 @@
 import streamlit as st
 import numpy as np
-from scipy.io.wavfile import read # Use read to load WAV files
+from scipy.io.wavfile import read
+import soundfile as sf  # Add soundfile for better audio format support
 import tempfile
 import os
 import time
@@ -8,6 +9,13 @@ from datetime import datetime
 import whisper
 import glob # To find files in the directory
 import sys # Import sys to check if running in Streamlit
+from enrich import enrich_with_llm_together, enrich_with_llm
+
+# add load env
+from dotenv import load_dotenv
+# Load environment variables from .env file
+load_dotenv()
+
 # Remove asyncio import as we won't use it
 
 # --- Streamlit Page Configuration (MUST be the first Streamlit command) ---
@@ -20,16 +28,16 @@ if 'streamlit' in sys.modules:
 # Directory where the recorder script saves audio chunks.
 # This MUST match the OUTPUT_DIR in recorder.py.
 AUDIO_CHUNKS_DIR = "./audio_chunks"
-TRANSCRIPTION_POLL_INTERVAL = 10 # Seconds to wait before checking for new files
-OUTPUT_FILENAME = "transcript_log.md" # File to save the transcript log
+TRANSCRIPTION_POLL_INTERVAL = 20 # Seconds to wait before checking for new files
+OUTPUT_FILENAME = os.environ.get("TRANSCRIPT_PATH", "transcript_log.md") # File to save the transcript log
+SUPPORTED_FORMATS = (".wav", ".mp3", "m4a")  # Add supported audio formats
 
 # --- Load Whisper Model ---
 # Use st.cache_resource to load the model only once across Streamlit re-runs.
 @st.cache_resource(show_spinner=False)
-def load_whisper_model():
+def load_whisper_model(model_name=os.environ.get("WHISPER_MODEL", "turbo")):
     """Loads the Whisper model, cached to avoid reloading on re-runs."""
     try:
-        model_name = "medium"
         with st.spinner(f"Loading Whisper model '{model_name}'..."):
             model = whisper.load_model(model_name)
             return model
@@ -68,55 +76,7 @@ for state in required_states:
              st.session_state[state] = 0 # Counters initialized to zero
 
 
-# --- Audio Processing ---
-def transcribe_wav_file(wav_path):
-    """Transcribes a WAV file using the loaded Whisper model."""
-    if model is None:
-        # If the model failed to load earlier, return an error
-        return None, "Whisper model not loaded"
-    if not os.path.exists(wav_path):
-         # If the WAV file doesn't exist, return an error
-         return None, f"WAV file not found: {wav_path}"
 
-    try:
-        print(f"Transcribing WAV: {wav_path}") # Debugging
-
-
-        # Perform the transcription using the Whisper model.
-        # The transcribe method returns a dictionary, we extract the 'text' key.
-        transcript = model.transcribe(wav_path)["text"].strip()
-        print(f"Transcription complete: {transcript[:50]}...") # Debugging (print first 50 chars)
-        return transcript, None # Return the transcribed text and no error
-    except Exception as e:
-        # Catch any errors during transcription (e.g., model issues, input format)
-        print(f"Transcription error for {wav_path}: {e}") # Debugging
-        return None, str(e) # Return None for transcript and the error message as a string
-    finally:
-        # This block ensures the temporary file is removed after processing.
-        if os.path.exists(wav_path):
-            try:
-                os.remove(wav_path) # Attempt to delete the processed file
-                print(f"Removed processed WAV: {wav_path}") # Debugging
-            except OSError as e:
-                 # Handle potential issues if the file is still in use or deletion fails
-                 print(f"Error removing processed file {wav_path}: {e}")
-                 # In a production app, you might want more robust error handling or logging here.
-
-
-def append_to_markdown(text, filename):
-    """Appends transcribed text to a markdown log file."""
-    # Only append if there is valid text to write
-    if text and text.strip(): # Check if text is not None or empty/whitespace
-        try:
-            # Open the file in append mode ('a'). Creates the file if it doesn't exist.
-            # Use utf-8 encoding for broad character support.
-            with open(filename, "a", encoding="utf-8") as f:
-                # Format the output with a timestamp and markdown heading/paragraph structure
-                f.write(f"## {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n{text}\n\n")
-            print(f"Appended to log file: {filename}") # Debugging
-        except Exception as e:
-            st.error(f"Error writing to log file: {e}")
-            print(f"Error writing to log file: {e}") # Debugging
 
 # --- UI Components ---
 # Display the main title of the application
@@ -146,8 +106,59 @@ with col2:
 status_placeholder = st.empty() # Placeholder for status messages
 progress_bar_placeholder = st.empty()
 full_log_expander = st.container(border=False)  # Changed to expanded=True since it's now the only log
-full_log_expander.write("### Transcription Log")
+full_log_expander.subheader("Transcription Log", divider=True)
 file_counts_placeholder = st.empty() # Placeholder to show file counts
+
+# --- Audio Processing ---
+def transcribe_audio_file(audio_path):
+    """Transcribes an audio file (WAV or MP3) using the loaded Whisper model."""
+    if model is None:
+        return None, "Whisper model not loaded", None, None
+    if not os.path.exists(audio_path):
+        return None, f"Audio file not found: {audio_path}", None, None
+
+    try:
+        print(f"Transcribing audio: {audio_path}")
+
+        # Get audio duration using soundfile
+        audio_info = sf.info(audio_path)
+        duration = audio_info.duration
+
+        # Time the transcription process
+        start_time = time.time()
+        transcript = model.transcribe(audio_path)["text"].strip()
+        
+        processing_time = time.time() - start_time
+
+        print(f"Transcription complete: {transcript[:50]}...")
+        return transcript, None, duration, processing_time
+    except Exception as e:
+        print(f"Transcription error for {audio_path}: {e}")
+        return None, str(e), None, None
+    finally:
+        if os.path.exists(audio_path):
+            try:
+                os.remove(audio_path)
+                print(f"Removed processed file: {audio_path}")
+            except OSError as e:
+                print(f"Error removing processed file {audio_path}: {e}")
+
+
+def append_to_markdown(text, filename):
+    """Appends transcribed text to a markdown log file."""
+    # Only append if there is valid text to write
+    if text and text.strip():  # Check if text is not None or empty/whitespace
+        try:
+            # check if folder for the file exists, if not create it
+            # Open the file in append mode ('a'). Creates the file if it doesn't exist.
+            # Use utf-8 encoding for broad character support.
+            with open(filename, "a", encoding="utf-8") as f:
+                # Format the output with a timestamp and include duration and processing time
+                f.write(text)
+            print(f"Appended to log file: {filename}")  # Debugging
+        except Exception as e:
+            st.error(f"Error writing to log file: {e}")
+            print(f"Error writing to log file: {e}")  # Debugging
 
 # --- Main Application Logic ---
 def main_loop():
@@ -167,10 +178,13 @@ def main_loop():
     if st.session_state.is_processing:
         status_placeholder.info(st.session_state.status_message)
 
-        # Find all WAV files in the audio chunks directory
+        # Find all WAV and MP3 files in the audio chunks directory
         # Use glob to get a list of files matching the pattern
         # Sort the files by name (timestamp) to process them in recording order
-        audio_files = sorted(glob.glob(os.path.join(AUDIO_CHUNKS_DIR, "*.wav")))
+        audio_files = []
+        for ext in SUPPORTED_FORMATS:
+            audio_files.extend(glob.glob(os.path.join(AUDIO_CHUNKS_DIR, f"*{ext}")))
+        audio_files.sort()  # Sort files by name
 
         if not audio_files:
             st.session_state.status_message = f"Monitoring `{AUDIO_CHUNKS_DIR}`. No new files found."
@@ -188,14 +202,32 @@ def main_loop():
                 progress_bar_placeholder.progress(progress_value, text=progress_text)
                 st.session_state.status_message = progress_text # Update status message too
 
-                transcript, error = transcribe_wav_file(file_path)
+                transcript, error, duration, processing_time = transcribe_audio_file(file_path)
 
-                timestamp = datetime.now().strftime("%H:%M:%S")
+                timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
                 if transcript:
-                    entry = f"**{timestamp}:** {transcript}"
+                    if os.getenv("ACTIVE_AI_ENRICHMENT", "True") == "True":
+                        start_time = time.time()
+                        llm_enriched_response = enrich_with_llm(transcript)
+                        enrichment_time = time.time() - start_time
+                        processing_time += enrichment_time   
+                    else:
+                        llm_enriched_response = None
+                    
+                    duration_str = f"**Audio Length:** {duration:.2f}s" if duration is not None else "**Audio Length:** unknown"
+                    proc_time_str = f"**Processing Time:** {processing_time:.2f}s" if processing_time is not None else "**Processing Time:** unknown"
+                    if llm_enriched_response:
+                        summary_title = llm_enriched_response.get("title", "Untitled")
+                        summary = llm_enriched_response.get("summary", "No summary available")
+                        enriched_transcript = llm_enriched_response.get("speaker_enriched_transcript", transcript)
+                        keywords = llm_enriched_response.get("keywords", [])
+                        keywords_str = " ".join([f":blue-badge[{keyword}]" for keyword in keywords])
+                        entry = f"#### [{timestamp}] {summary_title}\n\n**Topics:** {keywords_str}   |   {duration_str}   |   {proc_time_str}\n\n**Summary:** {summary}\n\n**Transcript:**\n\n{enriched_transcript}\n\n"
+                    else:
+                        entry = f"#### [{timestamp}] Title Unavailable   |   {duration_str}   |   {proc_time_str}\n\n**Transcript:**{transcript}\n\n"
                     st.session_state.transcript_log.insert(0, entry) # Add to log
-                    append_to_markdown(transcript, OUTPUT_FILENAME) # Append to file
+                    append_to_markdown(entry, OUTPUT_FILENAME) # Append to file
                     st.session_state.processed_files_count += 1
                     print(f"Successfully processed {file_name}") # Debugging
                 else:
@@ -218,8 +250,11 @@ def main_loop():
         # Update the "Full Log" expander display with the latest entries.
         # Limiting the number of displayed entries (`[:30]`) can improve performance
         # for very long transcripts.
-        full_log_expander.markdown("\n\n---\n\n".join(st.session_state.transcript_log[:30]))
-
+        for entry in st.session_state.transcript_log[:30]:
+            full_log_expander.markdown(entry.split("**Transcript:**")[0].strip())
+            transcript_expander = full_log_expander.expander(label="**Transcript**")
+            transcript_expander.markdown(entry.split("**Transcript:**")[1].strip())
+        
 
         # --- Poll for New Files ---
         # Wait for a short interval before the next Streamlit re-run to check for new files.
@@ -229,14 +264,17 @@ def main_loop():
 
     else:
         # This block executes on each Streamlit re-run *while* st.session_state.is_processing is False.
-        # It ensures the UI reflects the stopped state.
         status_placeholder.info(st.session_state.status_message)
         progress_bar_placeholder.progress(0.0, text="Monitoring stopped.")
         file_counts_placeholder.empty() # Clear file counts when stopped
 
         # Update the full log display one last time after stopping.
-        full_log_expander.markdown("\n\n---\n\n".join(st.session_state.transcript_log[:30]))
-
+        for entry in st.session_state.transcript_log[:30]:
+            full_log_expander.markdown(entry.split("**Transcript:**")[0].strip())
+            transcript_expander = full_log_expander.expander(label="**Transcript**")
+            transcript_expander.markdown(entry.split("**Transcript:**")[1].strip())
+            
+        # full_log_expander.markdown("\n\n---\n\n".join(st.session_state.transcript_log[:30]))
 
 # --- Script Entry Point ---
 # This is where the Streamlit script execution begins on every re-run.
