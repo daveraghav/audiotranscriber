@@ -8,3 +8,5 @@ __pycache__
 .env
 *.ipynb
 notebook.ipynb
+sample_audio_files
+models

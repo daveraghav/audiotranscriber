@@ -82,7 +82,6 @@ for state in required_states:
 # Display the main title of the application
 st.title(":material/speech_to_text: Transcription Monitor")
 # Add a brief description
-st.markdown(f"Monitoring `{AUDIO_CHUNKS_DIR}` for new audio files...")
 
 # --- Main UI Layout ---
 col1, col2 = st.columns(2)
@@ -99,7 +98,7 @@ with col2:
     # Stop button. Disabled if the app is not processing.
     if st.button(":material/stop_circle: Stop Monitoring", type="secondary", disabled=not st.session_state.is_processing, use_container_width=True):
         st.session_state.is_processing = False # Set the state to stopping
-        st.session_state.status_message = "Stopping monitoring..."
+        st.session_state.status_message = "Monitoring Stopped."
         st.rerun() # Force a Streamlit re-run to exit the processing loop
 
 # Placeholders for dynamic UI elements
@@ -224,15 +223,22 @@ def main_loop():
                         keywords = llm_enriched_response.get("keywords", [])
                         keywords_str = " ".join([f":blue-badge[{keyword}]" for keyword in keywords])
                         entry = f"#### [{timestamp}] {summary_title}\n\n**Topics:** {keywords_str}   |   {duration_str}   |   {proc_time_str}\n\n**Summary:** {summary}\n\n**Transcript:**\n\n{enriched_transcript}\n\n"
+                        entry_dict = {"header": f"#### [{timestamp}] {summary_title}\n\n**Topics:** {keywords_str}   |   {duration_str}   |   {proc_time_str}\n\n**Summary:** {summary}\n\n"}
+                        entry_dict["enriched_transcript"] = enriched_transcript
+                        entry_dict["raw_transcript"] = transcript
                     else:
                         entry = f"#### [{timestamp}] Title Unavailable   |   {duration_str}   |   {proc_time_str}\n\n**Transcript:**{transcript}\n\n"
-                    st.session_state.transcript_log.insert(0, entry) # Add to log
+                        entry_dict = {"header": f"#### [{timestamp}] Title Unavailable   |   {duration_str}   |   {proc_time_str}\n\n"}
+                        entry_dict["raw_transcript"] = transcript
+                        entry_dict["enriched_transcript"] = transcript
+                    st.session_state.transcript_log.insert(0, entry_dict) # Add to log
                     append_to_markdown(entry, OUTPUT_FILENAME) # Append to file
                     st.session_state.processed_files_count += 1
                     print(f"Successfully processed {file_name}") # Debugging
                 else:
                     entry = f"**{timestamp}:** ERROR transcribing {file_name} - {error}"
-                    st.session_state.transcript_log.insert(0, entry) # Add error to log
+                    entry_dict = {"header": entry, "raw_transcript": f"ERROR transcribing {file_name} - {error}",  "enriched_transcript": f"ERROR transcribing {file_name} - {error}"}
+                    st.session_state.transcript_log.insert(0, entry_dict) # Add error to log
                     append_to_markdown(f"ERROR: {error} (File: {file_name})", OUTPUT_FILENAME) # Append error to file
                     st.session_state.error_count += 1
                     print(f"Error processing {file_name}: {error}") # Debugging
@@ -251,9 +257,11 @@ def main_loop():
         # Limiting the number of displayed entries (`[:30]`) can improve performance
         # for very long transcripts.
         for entry in st.session_state.transcript_log[:30]:
-            full_log_expander.markdown(entry.split("**Transcript:**")[0].strip())
+            full_log_expander.markdown(entry["header"])
             transcript_expander = full_log_expander.expander(label="**Transcript**")
-            transcript_expander.markdown(entry.split("**Transcript:**")[1].strip())
+            enriched_transcript_tab, raw_transcript_tab = transcript_expander.tabs(["Enriched", "Raw"])
+            enriched_transcript_tab.markdown(entry["enriched_transcript"])
+            raw_transcript_tab.markdown(entry["raw_transcript"])
         
 
         # --- Poll for New Files ---
@@ -270,9 +278,11 @@ def main_loop():
 
         # Update the full log display one last time after stopping.
         for entry in st.session_state.transcript_log[:30]:
-            full_log_expander.markdown(entry.split("**Transcript:**")[0].strip())
+            full_log_expander.markdown(entry["header"])
             transcript_expander = full_log_expander.expander(label="**Transcript**")
-            transcript_expander.markdown(entry.split("**Transcript:**")[1].strip())
+            enriched_transcript_tab, raw_transcript_tab = transcript_expander.tabs(["Enriched", "Raw"])
+            enriched_transcript_tab.markdown(entry["enriched_transcript"])
+            raw_transcript_tab.markdown(entry["raw_transcript"])
             
         # full_log_expander.markdown("\n\n---\n\n".join(st.session_state.transcript_log[:30]))
 

@@ -23,7 +23,7 @@ class TranscriptAnalysis(BaseModel):
     keywords: List[str] = Field(description="3-5 relevant keywords that summarise the discussion topics.")
     speaker_enriched_transcript: str = Field(
         description=(
-            "A markdown formatted string of the full chronological conversation. "
+            "A markdown formatted string of the full chronological conversation after speaker diarization. "
             "**Absolutely no modification, summarisation, or rephrasing of the original transcript content is allowed.** "
             "Each speaker's turn must follow this precise pattern:\n"
             "**<Speaker Name>:** <Their exact, verbatim utterance from the transcript>\n\n"
@@ -33,13 +33,14 @@ class TranscriptAnalysis(BaseModel):
             "\n\nExample transcript for schema understanding only:\n**Speaker_1:** Hi there this is your host Speaker_1, I'm here with Speaker_2. Hi Speaker_2 welcome to the show, how are you?\n\n**Speaker_2:** I'm doing good, how are you?\n\n**Speaker_1:** Great, thanks for asking! So, tell us about your latest project.\n\n"
             "The content of the utterance must be the raw, verbatim text from the original transcript, exactly as provided."
             "Hence, the output of speaker enriched transcript and raw transcript must be like-for-like, except for the speaker enrichment and specified paragraph breaks."
+            "If there is only one speaker detected, follow this format: **<Speaker Name>:** <Their exact, verbatim utterance from the transcript>\n\n"
         )
     )
 
 parser = PydanticOutputParser(pydantic_object=TranscriptAnalysis)
 
 template = """
-You are an expert in transcript analysis. Your task is to process the given transcript and extract specific information as a JSON object.
+You are an expert speaker diarization model and transcript analyst. Your task is to process the given transcript, with focus on speaker change detection based on conversational style and context (act as a replacement of pyannote) and extract requested transcript information as a JSON object.
 
 Strictly adhere to the following output format. Your response MUST be a JSON object, and ONLY the JSON object. Do NOT wrap it in markdown code blocks (e.g., ```json ... ```) or any other conversational text.
 

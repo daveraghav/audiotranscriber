@@ -7,7 +7,7 @@ import threading
 from datetime import datetime
 
 # --- Configuration ---
-CHUNK_DURATION = 120  # Duration of each audio chunk in seconds
+CHUNK_DURATION = os.getenv("RECORDER_CHUNK_DURATION", 300)  # Duration of each audio chunk in seconds
 SAMPLE_RATE = 16000  # Sample rate for audio recording
 CHANNELS = 1         # Number of audio channels (1 for mono)
 # Directory to save audio chunks. Make sure this directory exists before running.
