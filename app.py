@@ -102,11 +102,11 @@ with col2:
         st.rerun() # Force a Streamlit re-run to exit the processing loop
 
 # Placeholders for dynamic UI elements
-status_placeholder = st.empty() # Placeholder for status messages
+# status_placeholder = st.empty() # Placeholder for status messages
 progress_bar_placeholder = st.empty()
 full_log_expander = st.container(border=False)  # Changed to expanded=True since it's now the only log
 full_log_expander.subheader("Transcription Log", divider=True)
-file_counts_placeholder = st.empty() # Placeholder to show file counts
+# file_counts_placeholder = st.empty() # Placeholder to show file counts
 
 # --- Audio Processing ---
 def transcribe_audio_file(audio_path):
@@ -175,7 +175,7 @@ def main_loop():
     # --- Monitoring and Processing Loop ---
     # This block executes on every Streamlit re-run *while* st.session_state.is_processing is True.
     if st.session_state.is_processing:
-        status_placeholder.info(st.session_state.status_message)
+        # status_placeholder.info(st.session_state.status_message)
 
         # Find all WAV and MP3 files in the audio chunks directory
         # Use glob to get a list of files matching the pattern
@@ -187,11 +187,11 @@ def main_loop():
 
         if not audio_files:
             st.session_state.status_message = f"Monitoring `{AUDIO_CHUNKS_DIR}`. No new files found."
-            status_placeholder.info(st.session_state.status_message)
+            # status_placeholder.info(st.session_state.status_message)
             progress_bar_placeholder.progress(0.0, text="Waiting for audio files...")
         else:
             st.session_state.status_message = f"Monitoring `{AUDIO_CHUNKS_DIR}`. Found {len(audio_files)} file(s) to process."
-            status_placeholder.info(st.session_state.status_message)
+            # status_placeholder.info(st.session_state.status_message)
 
             # Process files one by one
             for i, file_path in enumerate(audio_files):
@@ -245,13 +245,13 @@ def main_loop():
 
             # After processing all files in this batch:
             st.session_state.status_message = f"Finished processing batch. Processed {st.session_state.processed_files_count} files, {st.session_state.error_count} errors."
-            status_placeholder.success(st.session_state.status_message)
+            # status_placeholder.success(st.session_state.status_message)
             progress_bar_placeholder.progress(1.0, text="Batch processing complete.") # Set progress to 100%
 
         # Update file counts display
-        file_counts_placeholder.info(
-            f"Processed: {st.session_state.processed_files_count} | Errors: {st.session_state.error_count}"
-        )
+        # file_counts_placeholder.info(
+        #     f"Processed: {st.session_state.processed_files_count} | Errors: {st.session_state.error_count}"
+        # )
 
         # Update the "Full Log" expander display with the latest entries.
         # Limiting the number of displayed entries (`[:30]`) can improve performance
@@ -272,9 +272,9 @@ def main_loop():
 
     else:
         # This block executes on each Streamlit re-run *while* st.session_state.is_processing is False.
-        status_placeholder.info(st.session_state.status_message)
+        # status_placeholder.info(st.session_state.status_message)
         progress_bar_placeholder.progress(0.0, text="Monitoring stopped.")
-        file_counts_placeholder.empty() # Clear file counts when stopped
+        # file_counts_placeholder.empty() # Clear file counts when stopped
 
         # Update the full log display one last time after stopping.
         for entry in st.session_state.transcript_log[:30]:
