@@ -13,6 +13,7 @@ from enrich import enrich_with_llm_together, enrich_with_llm
 
 # add load env
 from dotenv import load_dotenv
+import json
 # Load environment variables from .env file
 load_dotenv()
 
@@ -75,8 +76,10 @@ for state in required_states:
         elif state in ['processed_files_count', 'error_count']:
              st.session_state[state] = 0 # Counters initialized to zero
 
-
-
+# --- Auto-start Monitoring on Launch ---
+if 'auto_started' not in st.session_state:
+    st.session_state.is_processing = True
+    st.session_state.auto_started = True
 
 # --- UI Components ---
 # Display the main title of the application
@@ -104,8 +107,8 @@ with col2:
 # Placeholders for dynamic UI elements
 # status_placeholder = st.empty() # Placeholder for status messages
 progress_bar_placeholder = st.empty()
-full_log_expander = st.container(border=False)  # Changed to expanded=True since it's now the only log
-full_log_expander.subheader("Transcription Log", divider=True)
+st.subheader("Transcription Log", divider=True)
+
 # file_counts_placeholder = st.empty() # Placeholder to show file counts
 
 # --- Audio Processing ---
@@ -202,47 +205,69 @@ def main_loop():
                 st.session_state.status_message = progress_text # Update status message too
 
                 transcript, error, duration, processing_time = transcribe_audio_file(file_path)
+                if duration is not None:
+                    duration = round(duration, 2)
+                entry_dict = {
+                    "raw_transcript": transcript,
+                    "error": error,
+                    "duration": duration,
+                    "transcription_time": round(processing_time, 2)
+                }
 
-                timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                timestamp = datetime.now()
+                timestamp_str = timestamp.strftime("%Y-%m-%d %H:%M:%S")
+                time_str = timestamp.strftime("%H:%M:%S")
 
                 if transcript:
                     if os.getenv("ACTIVE_AI_ENRICHMENT", "True") == "True":
                         start_time = time.time()
                         llm_enriched_response = enrich_with_llm(transcript)
                         enrichment_time = time.time() - start_time
+                        entry_dict["enrichment_time"] = round(enrichment_time, 2)
                         processing_time += enrichment_time   
+                        entry_dict["total_processing_time"] = round(processing_time, 2)
                     else:
                         llm_enriched_response = None
                     
-                    duration_str = f"**Audio Length:** {duration:.2f}s" if duration is not None else "**Audio Length:** unknown"
-                    proc_time_str = f"**Processing Time:** {processing_time:.2f}s" if processing_time is not None else "**Processing Time:** unknown"
+                    duration_str = f"**Audio Length:** {duration:.0f}s" if duration is not None else "**Audio Length:** unknown"
+                    proc_time_str = f"**Processing Time:** {processing_time:.0f}s" if processing_time is not None else "**Processing Time:** unknown"
                     if llm_enriched_response:
                         summary_title = llm_enriched_response.get("title", "Untitled")
                         summary = llm_enriched_response.get("summary", "No summary available")
                         enriched_transcript = llm_enriched_response.get("speaker_enriched_transcript", transcript)
                         keywords = llm_enriched_response.get("keywords", [])
                         keywords_str = " ".join([f":blue-badge[{keyword}]" for keyword in keywords])
-                        entry = f"#### [{timestamp}] {summary_title}\n\n**Topics:** {keywords_str}   |   {duration_str}   |   {proc_time_str}\n\n**Summary:** {summary}\n\n**Transcript:**\n\n{enriched_transcript}\n\n"
-                        entry_dict = {"header": f"#### [{timestamp}] {summary_title}\n\n**Topics:** {keywords_str}   |   {duration_str}   |   {proc_time_str}\n\n**Summary:** {summary}\n\n"}
+                        keywords_str_md = ", ".join([f"{keyword}" for keyword in keywords])
+                        entry = f"### [{timestamp_str}] {summary_title}\n\n**Topics:** {keywords_str_md}   |   {duration_str}   |   {proc_time_str}\n\n**Summary:** {summary}\n\n**Transcript:**\n\n{enriched_transcript}\n\n"
+                        entry_dict["header"] = f"#### [{timestamp_str}] {summary_title}\n\n**Topics:** {keywords_str}   |   {duration_str}   |   {proc_time_str}\n\n**Summary:** {summary}\n\n"
+                        entry_dict["title"] = summary_title
+                        entry_dict["keywords"] = keywords
+                        entry_dict["summary"] = summary
                         entry_dict["enriched_transcript"] = enriched_transcript
-                        entry_dict["raw_transcript"] = transcript
                     else:
-                        entry = f"#### [{timestamp}] Title Unavailable   |   {duration_str}   |   {proc_time_str}\n\n**Transcript:**{transcript}\n\n"
-                        entry_dict = {"header": f"#### [{timestamp}] Title Unavailable   |   {duration_str}   |   {proc_time_str}\n\n"}
-                        entry_dict["raw_transcript"] = transcript
+                        entry = f"### [{timestamp_str}] Untitled   |   {duration_str}   |   {proc_time_str}\n\n**Transcript:**{transcript}\n\n"
+                        entry_dict["header"] = f"#### [{timestamp_str}] Untitled   |   {duration_str}   |   {proc_time_str}\n\n"
+                        entry_dict["title"] = "Untitled"
+                        entry_dict["keywords"] = []
+                        entry_dict["summary"] = "Summary unavailable"
                         entry_dict["enriched_transcript"] = transcript
                     st.session_state.transcript_log.insert(0, entry_dict) # Add to log
                     append_to_markdown(entry, OUTPUT_FILENAME) # Append to file
                     st.session_state.processed_files_count += 1
                     print(f"Successfully processed {file_name}") # Debugging
                 else:
-                    entry = f"**{timestamp}:** ERROR transcribing {file_name} - {error}"
+                    entry = f"**{timestamp_str}:** ERROR transcribing {file_name} - {error}"
                     entry_dict = {"header": entry, "raw_transcript": f"ERROR transcribing {file_name} - {error}",  "enriched_transcript": f"ERROR transcribing {file_name} - {error}"}
                     st.session_state.transcript_log.insert(0, entry_dict) # Add error to log
                     append_to_markdown(f"ERROR: {error} (File: {file_name})", OUTPUT_FILENAME) # Append error to file
                     st.session_state.error_count += 1
                     print(f"Error processing {file_name}: {error}") # Debugging
-
+            json_file_name = f"{time_str} {entry_dict['title']}.json"
+            json_dir = os.path.join(os.getenv("JSON_DIR", os.path.join("transcripts", "json_data")), str(timestamp.year), str(timestamp.month), str(timestamp.day), str(timestamp.hour))
+            os.makedirs(json_dir, exist_ok=True)
+            json_file_path = os.path.join(json_dir, json_file_name)
+            with open(json_file_path, "w") as f:
+                json.dump(entry_dict, f, indent=4)
             # After processing all files in this batch:
             st.session_state.status_message = f"Finished processing batch. Processed {st.session_state.processed_files_count} files, {st.session_state.error_count} errors."
             # status_placeholder.success(st.session_state.status_message)
@@ -256,9 +281,9 @@ def main_loop():
         # Update the "Full Log" expander display with the latest entries.
         # Limiting the number of displayed entries (`[:30]`) can improve performance
         # for very long transcripts.
-        for entry in st.session_state.transcript_log[:30]:
-            full_log_expander.markdown(entry["header"])
-            transcript_expander = full_log_expander.expander(label="**Transcript**")
+        for entry in st.session_state.transcript_log[:int(os.getenv("MAX_TRANSCRIPTS_TO_DISPLAY", 100))]:
+            st.markdown(entry["header"])
+            transcript_expander = st.expander(label="**Transcript**")
             enriched_transcript_tab, raw_transcript_tab = transcript_expander.tabs(["Enriched", "Raw"])
             enriched_transcript_tab.markdown(entry["enriched_transcript"])
             raw_transcript_tab.markdown(entry["raw_transcript"])
@@ -277,9 +302,9 @@ def main_loop():
         # file_counts_placeholder.empty() # Clear file counts when stopped
 
         # Update the full log display one last time after stopping.
-        for entry in st.session_state.transcript_log[:30]:
-            full_log_expander.markdown(entry["header"])
-            transcript_expander = full_log_expander.expander(label="**Transcript**")
+        for entry in st.session_state.transcript_log[:int(os.getenv("MAX_TRANSCRIPTS_TO_DISPLAY", 100))]:
+            st.markdown(entry["header"])
+            transcript_expander = st.expander(label="**Transcript**")
             enriched_transcript_tab, raw_transcript_tab = transcript_expander.tabs(["Enriched", "Raw"])
             enriched_transcript_tab.markdown(entry["enriched_transcript"])
             raw_transcript_tab.markdown(entry["raw_transcript"])
