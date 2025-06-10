@@ -33,6 +33,13 @@ TRANSCRIPTION_POLL_INTERVAL = 20 # Seconds to wait before checking for new files
 OUTPUT_FILENAME = os.environ.get("TRANSCRIPT_PATH", "transcript_log.md") # File to save the transcript log
 SUPPORTED_FORMATS = (".wav", ".mp3", "m4a")  # Add supported audio formats
 
+# create output directory and empty file if it doesn't exist
+if not os.path.exists(AUDIO_CHUNKS_DIR):
+    os.makedirs(AUDIO_CHUNKS_DIR)
+# Ensure the output file exists
+if not os.path.exists(OUTPUT_FILENAME):
+    with open(OUTPUT_FILENAME, "w", encoding="utf-8") as f:
+        f.write("# Transcription Log\n\n")  # Initialize with a header
 # --- Load Whisper Model ---
 # Use st.cache_resource to load the model only once across Streamlit re-runs.
 @st.cache_resource(show_spinner=False)
