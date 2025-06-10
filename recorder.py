@@ -17,7 +17,7 @@ CHANNELS = 1         # Number of audio channels (1 for mono)
 # A fixed directory is used here for simplicity, ensure both scripts can access it.
 OUTPUT_DIR = "./audio_chunks"
 
-mic = sd.all_microphones(include_loopback=True)[os.getenv("RECORDER_MIC_INDEX", 0)]  # Select the first available microphone
+mic = sd.all_microphones(include_loopback=True)[int(os.getenv("RECORDER_MIC_INDEX"), 0)]  # Select the first available microphone
 # --- Global Flag ---
 is_recording = False # Flag to control the recording loop
 
