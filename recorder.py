@@ -1,4 +1,4 @@
-import sounddevice as sd
+import soundcard as sd
 import numpy as np
 from scipy.io.wavfile import write
 import time
@@ -17,6 +17,7 @@ CHANNELS = 1         # Number of audio channels (1 for mono)
 # A fixed directory is used here for simplicity, ensure both scripts can access it.
 OUTPUT_DIR = "./audio_chunks"
 
+mic = sd.all_microphones(include_loopback=True)[os.getenv("RECORDER_MIC_INDEX", 0)]  # Select the first available microphone
 # --- Global Flag ---
 is_recording = False # Flag to control the recording loop
 
@@ -38,8 +39,7 @@ def record_chunk():
         print(f"Recording chunk of {CHUNK_DURATION} seconds...")
 
         # Record audio using sounddevice. This call blocks until the recording is complete.
-        recording = sd.rec(chunk_size, samplerate=SAMPLE_RATE,
-                         channels=CHANNELS, dtype='int16')
+        recording = mic.record(numframes=chunk_size, samplerate=SAMPLE_RATE)
         sd.wait() # Wait until the recording is complete
 
         if is_recording: # This is the usage that was reported as being before the global declaration
