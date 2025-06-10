@@ -6,6 +6,9 @@ import os
 import threading
 from datetime import datetime
 
+from dotenv import load_dotenv
+load_dotenv()
+
 # --- Configuration ---
 CHUNK_DURATION = int(os.getenv("RECORDER_CHUNK_DURATION", 300))  # Duration of each audio chunk in seconds
 SAMPLE_RATE = 16000  # Sample rate for audio recording
