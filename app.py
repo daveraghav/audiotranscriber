@@ -28,7 +28,7 @@ if 'streamlit' in sys.modules:
 # --- Configuration ---
 # Directory where the recorder script saves audio chunks.
 # This MUST match the OUTPUT_DIR in recorder.py.
-AUDIO_CHUNKS_DIR = "./audio_chunks"
+AUDIO_CHUNKS_DIR = "audio_chunks"
 TRANSCRIPTION_POLL_INTERVAL = 20 # Seconds to wait before checking for new files
 OUTPUT_FILENAME = os.environ.get("TRANSCRIPT_PATH", "transcript_log.md") # File to save the transcript log
 SUPPORTED_FORMATS = (".wav", ".mp3", "m4a")  # Add supported audio formats
@@ -207,16 +207,18 @@ def main_loop():
                 transcript, error, duration, processing_time = transcribe_audio_file(file_path)
                 if duration is not None:
                     duration = round(duration, 2)
+                if processing_time is not None:
+                    processing_time = round(processing_time, 2)
                 entry_dict = {
                     "raw_transcript": transcript,
                     "error": error,
                     "duration": duration,
-                    "transcription_time": round(processing_time, 2)
+                    "transcription_time": processing_time
                 }
 
                 timestamp = datetime.now()
                 timestamp_str = timestamp.strftime("%Y-%m-%d %H:%M:%S")
-                time_str = timestamp.strftime("%H:%M:%S")
+                time_str = timestamp.strftime("%H-%M-%S")
 
                 if transcript:
                     if os.getenv("ACTIVE_AI_ENRICHMENT", "True") == "True":
@@ -262,7 +264,7 @@ def main_loop():
                     append_to_markdown(f"ERROR: {error} (File: {file_name})", OUTPUT_FILENAME) # Append error to file
                     st.session_state.error_count += 1
                     print(f"Error processing {file_name}: {error}") # Debugging
-            json_file_name = f"{time_str} {entry_dict['title']}.json"
+            json_file_name = f"{time_str} {entry_dict.get('title', 'Untitled')}.json"
             json_dir = os.path.join(os.getenv("JSON_DIR", os.path.join("transcripts", "json_data")), str(timestamp.year), str(timestamp.month), str(timestamp.day), str(timestamp.hour))
             os.makedirs(json_dir, exist_ok=True)
             json_file_path = os.path.join(json_dir, json_file_name)
