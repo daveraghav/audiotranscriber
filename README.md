@@ -13,13 +13,13 @@ Purpose: Continuously record audio in the background and save it as audio files.
 
 Key Features:
 
-* Records audio in fixed-duration chunks (configurable, currently set to 120 seconds)
+* Records audio in fixed-duration chunks (configurable, currently set to 300 seconds)
 * Generates uniquely named audio files with timestamps
 * Runs quietly in the background until manually stopped
 
 Configuration Options:
 
-* Duration of each audio chunk in seconds (default: 120)
+* Duration of each audio chunk in seconds (default: 300)
 * Audio quality settings (currently optimised for speech)
 * Storage location for audio chunks
 

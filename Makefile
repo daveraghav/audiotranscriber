@@ -4,3 +4,6 @@ streamlit:
 
 recorder:
 	uv run recorder.py
+
+transcribe:
+	uv run transcribe.py --verbose
